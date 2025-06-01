@@ -1,5 +1,32 @@
+
 bin/
 obj/
-/packages/
-riderModule.iml
-/_ReSharper.Caches/
+.vs/
+*.user
+*.suo
+
+.idea/*
+
+!.idea
+!.idea/**
+
+*.swp
+*.bak
+*.tmp
+
+*.log
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+.vscode/
+
+TestResults/
+coverage/
+
+# ignoring appsettings
+appsettings.json
+appsettings.*.json
+
+# Ignore global SDK version settings
+global.json

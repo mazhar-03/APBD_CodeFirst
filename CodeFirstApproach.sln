@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CF.API", "CF.API\CF.API.csproj", "{00571A9C-46F4-489A-8C40-CBDE6AF42F3F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CF.API", "src\CF.API\CF.API.csproj", "{00571A9C-46F4-489A-8C40-CBDE6AF42F3F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

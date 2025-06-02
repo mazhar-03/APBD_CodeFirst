@@ -195,8 +195,7 @@ public class AccountController : ControllerBase
 
         if (account.Role == null)
             return NotFound("Role data not found.");
-
-        // Map to EmployeeDto
+        
         var employeeDto = new EmployeeDto
         {
             Id = account.Employee.Id,
@@ -204,9 +203,9 @@ public class AccountController : ControllerBase
                 $"{account.Employee.Person.FirstName} {account.Employee.Person.MiddleName} {account.Employee.Person.LastName}",
             Position = new PositionDto
             {
-                Id = account.Employee.Position?.Id, // Safe check for null position
-                Name = account.Employee.Position?.Name, // Safe check for null position
-                MinExpYears = account.Employee.Position?.MinExpYears ?? 0 // Default to 0 if position is null
+                Id = account.Employee.Position?.Id, 
+                Name = account.Employee.Position?.Name, 
+                MinExpYears = account.Employee.Position?.MinExpYears ?? 0 
             },
             Person = new PersonDto
             {
@@ -219,7 +218,6 @@ public class AccountController : ControllerBase
             }
         };
 
-        // Map to AccountDto
         var accountDto = new AccountDto
         {
             Id = account.Id,
@@ -257,17 +255,19 @@ public class AccountController : ControllerBase
         return NoContent();
     }
 
-    [HttpGet("whoami")]
-    [Authorize]
-    public IActionResult WhoAmI()
-    {
-        var claims = User.Claims.Select(c => new { c.Type, c.Value }).ToList();
-
-        return Ok(new
-        {
-            User.Identity?.Name,
-            User.Identity?.IsAuthenticated,
-            Claims = claims
-        });
-    }
+    //used for getting that value :
+    //NameClaimType = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier" 
+    // [HttpGet("whoami")]
+    // [Authorize]
+    // public IActionResult WhoAmI()
+    // {
+    //     var claims = User.Claims.Select(c => new { c.Type, c.Value }).ToList();
+    //
+    //     return Ok(new
+    //     {
+    //         User.Identity?.Name,
+    //         User.Identity?.IsAuthenticated,
+    //         Claims = claims
+    //     });
+    // }
 }

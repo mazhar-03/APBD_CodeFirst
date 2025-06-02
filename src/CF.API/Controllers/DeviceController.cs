@@ -67,7 +67,6 @@ public async Task<IActionResult> UpdateMyDevice(int id, [FromBody] UpdateDeviceD
     if (string.IsNullOrEmpty(username))
         return Unauthorized("User is not authenticated.");
 
-    // Get the account linked with the username
     var account = await _context.Accounts
         .Include(a => a.Employee)
         .FirstOrDefaultAsync(a => a.Username == username);
@@ -75,22 +74,18 @@ public async Task<IActionResult> UpdateMyDevice(int id, [FromBody] UpdateDeviceD
     if (account == null || account.Employee == null)
         return NotFound("Account or Employee data not found.");
 
-    // Find the device assigned to the user through DeviceEmployee relationship
     var deviceEmployee = await _context.DeviceEmployees
-        .Include(de => de.Device) // Ensure the Device is loaded
+        .Include(de => de.Device)
         .FirstOrDefaultAsync(de => de.DeviceId == id && de.EmployeeId == account.Employee.Id);
 
     if (deviceEmployee == null)
         return NotFound("Device not found or not assigned to you.");
 
-    // Access the Device from DeviceEmployee
     var device = deviceEmployee.Device;
 
-    // Check if the device is null before accessing it
     if (device == null)
         return NotFound("Device data is null or problem about its linking with your device.");
 
-    // Update device details if provided
     if (!string.IsNullOrEmpty(dto.Name))
         device.Name = dto.Name;
 

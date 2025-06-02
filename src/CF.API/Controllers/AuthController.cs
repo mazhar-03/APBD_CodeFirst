@@ -25,9 +25,6 @@ public class AuthController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Auth(LoginDto dto, CancellationToken cancellationToken)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
         var account = await _context.Accounts
             .Include(a => a.Role)
             .FirstOrDefaultAsync(a => a.Username == dto.Username, cancellationToken);

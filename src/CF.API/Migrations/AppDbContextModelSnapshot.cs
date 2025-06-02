@@ -51,7 +51,7 @@ namespace CF.API.Migrations
 
                     b.HasIndex("RoleId");
 
-                    b.ToTable("Account");
+                    b.ToTable("Account", (string)null);
                 });
 
             modelBuilder.Entity("CF.API.Models.Device", b =>
@@ -66,10 +66,7 @@ namespace CF.API.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int?>("DeviceTypeId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("EmployeeId")
+                    b.Property<int>("DeviceTypeId")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsEnabled")
@@ -83,9 +80,7 @@ namespace CF.API.Migrations
 
                     b.HasIndex("DeviceTypeId");
 
-                    b.HasIndex("EmployeeId");
-
-                    b.ToTable("Device");
+                    b.ToTable("Device", (string)null);
                 });
 
             modelBuilder.Entity("CF.API.Models.DeviceEmployee", b =>
@@ -114,7 +109,7 @@ namespace CF.API.Migrations
 
                     b.HasIndex("EmployeeId");
 
-                    b.ToTable("DeviceEmployee");
+                    b.ToTable("DeviceEmployee", (string)null);
                 });
 
             modelBuilder.Entity("CF.API.Models.DeviceType", b =>
@@ -131,7 +126,7 @@ namespace CF.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("DeviceType");
+                    b.ToTable("DeviceType", (string)null);
 
                     b.HasData(
                         new
@@ -169,6 +164,7 @@ namespace CF.API.Migrations
                         .HasColumnType("int");
 
                     b.Property<decimal>("Salary")
+                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Id");
@@ -177,7 +173,7 @@ namespace CF.API.Migrations
 
                     b.HasIndex("PositionId");
 
-                    b.ToTable("Employee");
+                    b.ToTable("Employee", (string)null);
                 });
 
             modelBuilder.Entity("CF.API.Models.Person", b =>
@@ -213,7 +209,7 @@ namespace CF.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Person");
+                    b.ToTable("Person", (string)null);
                 });
 
             modelBuilder.Entity("CF.API.Models.Position", b =>
@@ -233,7 +229,7 @@ namespace CF.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Position");
+                    b.ToTable("Position", (string)null);
                 });
 
             modelBuilder.Entity("CF.API.Models.Role", b =>
@@ -250,7 +246,7 @@ namespace CF.API.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Role");
+                    b.ToTable("Role", (string)null);
 
                     b.HasData(
                         new
@@ -288,11 +284,9 @@ namespace CF.API.Migrations
                 {
                     b.HasOne("CF.API.Models.DeviceType", "DeviceType")
                         .WithMany("Devices")
-                        .HasForeignKey("DeviceTypeId");
-
-                    b.HasOne("CF.API.Models.Employee", null)
-                        .WithMany("Devices")
-                        .HasForeignKey("EmployeeId");
+                        .HasForeignKey("DeviceTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("DeviceType");
                 });
@@ -349,8 +343,6 @@ namespace CF.API.Migrations
                 {
                     b.Navigation("Account")
                         .IsRequired();
-
-                    b.Navigation("Devices");
                 });
 
             modelBuilder.Entity("CF.API.Models.Person", b =>

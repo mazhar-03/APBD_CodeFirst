@@ -10,5 +10,4 @@ public class Employee
     public decimal Salary { get; set; }
     public DateTime HireDate { get; set; }
     public Account Account { get; set; }
-    public ICollection<Device> Devices { get; set; }
 }

@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using CF.API.DAL;
 using CF.API.DTOs;
+using CF.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -58,7 +59,7 @@ public class DevicesController : ControllerBase
         return Ok(devices);
     }
 
-    [HttpPut("{id}")]
+    [HttpPut("myself/{id}")]
 [Authorize]
 public async Task<IActionResult> UpdateMyDevice(int id, [FromBody] UpdateDeviceDto dto)
 {
@@ -112,6 +113,173 @@ public async Task<IActionResult> UpdateMyDevice(int id, [FromBody] UpdateDeviceD
 
     return NoContent(); 
 }
+
+    [HttpGet]
+[Authorize(Roles = "Admin")]
+public async Task<IActionResult> GetAllDevices()
+{
+    try
+    {
+        var devices = await _context.Devices
+            .Select(d => new {d.Id, d.Name}).ToListAsync();
+
+        return Ok(devices);
+    }
+    catch (Exception ex)
+    {
+        return Problem(ex.Message);
+    }
+}
+
+    [HttpGet("{id:int}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> GetDeviceById(int id)
+    {
+        try
+        {
+            var device = await _context.Devices
+                .Include(d => d.DeviceType)
+                .Include(d => d.DeviceEmployees)
+                .ThenInclude(de => de.Employee)
+                .ThenInclude(e => e.Person)
+                .FirstOrDefaultAsync(d => d.Id == id);
+
+            if (device == null)
+                return NotFound($"Device {id} not found");
+
+            var additionalJson = JsonDocument.Parse(device.AdditionalProperties ?? "{}").RootElement;
+            var currentAssignment = device.DeviceEmployees
+                .FirstOrDefault(de => de.ReturnDate == null);
+
+            CurrentUserDTO? currentUser = null;
+            if (currentAssignment != null && currentAssignment.Employee?.Person != null)
+            {
+                var person = currentAssignment.Employee.Person;
+                currentUser = new CurrentUserDTO
+                {
+                    Id = currentAssignment.EmployeeId,
+                    Name = $"{person.FirstName} {person.MiddleName} {person.LastName}"
+                };
+            }
+
+            var dto = new DeviceDto
+            {
+                Id = device.Id,
+                Name = device.Name,
+                IsEnabled = device.IsEnabled,
+                AdditionalProperties = additionalJson,
+                DeviceType = new DeviceTypeDto
+                {
+                    Id = device.DeviceType.Id,
+                    Name = device.DeviceType.Name
+                }
+            };
+
+            return Ok(dto);
+        }
+        catch (Exception ex)
+        {
+            return Problem(ex.Message);
+        }
+    }
+
+    [HttpPost]
+[Authorize(Roles = "Admin")]
+public async Task<IActionResult> CreateDevice([FromBody] CreateDeviceDto dev)
+{
+    try
+    {
+        if (dev.AdditionalProperties.ValueKind == JsonValueKind.Null)
+            return BadRequest("AdditionalProperties cannot be null");
+
+        var type = await _context.DeviceTypes
+            .SingleOrDefaultAsync(t => t.Name == dev.DeviceTypeName);
+
+        if (type == null)
+            return BadRequest($"Unknown device type '{dev.DeviceTypeName}'");
+
+        var device = new Device
+        {
+            Name = dev.Name,
+            DeviceTypeId = type.Id,
+            IsEnabled = dev.IsEnabled,
+            AdditionalProperties = dev.AdditionalProperties.GetRawText()  
+        };
+
+        _context.Devices.Add(device);
+        await _context.SaveChangesAsync();
+
+        var returnedDto = new
+        {
+            id = device.Id,
+            name = device.Name,
+            deviceTypeName = type.Name,
+            isEnabled = device.IsEnabled,
+            additionalProperties = JsonDocument.Parse(device.AdditionalProperties ?? "{}").RootElement
+        };
+
+        return Created($"/api/devices/{device.Id}", returnedDto);
+    }
+    catch (Exception ex)
+    {
+        return Problem(ex.Message);
+    }
+}
+
+[HttpPut("{id}")]
+[Authorize(Roles = "Admin")]
+public async Task<IActionResult> UpdateDevice(int id, [FromBody] CreateDeviceDto dto)
+{
+    try
+    {
+        var device = await _context.Devices.FindAsync(id);
+        if (device == null)
+            return NotFound($"Device {id} not found");
+
+        var type = await _context.DeviceTypes
+            .SingleOrDefaultAsync(t => t.Name == dto.DeviceTypeName);
+        if (type == null)
+            return BadRequest($"Unknown device type '{dto.DeviceTypeName}'");
+
+        device.Name = dto.Name;
+        device.DeviceTypeId = type.Id;
+        device.IsEnabled = dto.IsEnabled;
+        device.AdditionalProperties = dto.AdditionalProperties.GetRawText();  
+
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+    catch (Exception ex)
+    {
+        return Problem(ex.Message);
+    }
+}
+
+[HttpDelete("{id}")]
+[Authorize(Roles = "Admin")]
+public async Task<IActionResult> DeleteDevice(int id)
+{
+    try
+    {
+        var device = await _context.Devices.FindAsync(id);
+        if (device == null)
+            return NotFound($"Device {id} not found");
+
+        var isAssigned = await _context.DeviceEmployees
+            .AnyAsync(de => de.DeviceId == id);
+        if (isAssigned)
+            return BadRequest($"Cannot delete device {id} because it is associated with an employee");
+
+        _context.Devices.Remove(device);
+        await _context.SaveChangesAsync();
+        return NoContent();
+    }
+    catch (Exception ex)
+    {
+        return Problem("Error deleting device: " + ex.Message);
+    }
+}
+
 
 
 }

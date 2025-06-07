@@ -193,10 +193,10 @@ public async Task<IActionResult> CreateDevice([FromBody] CreateDeviceDto dev)
             return BadRequest("AdditionalProperties cannot be null");
 
         var type = await _context.DeviceTypes
-            .SingleOrDefaultAsync(t => t.Name == dev.DeviceTypeName);
+            .SingleOrDefaultAsync(t => t.Id == dev.DeviceTypeId);
 
         if (type == null)
-            return BadRequest($"Unknown device type '{dev.DeviceTypeName}'");
+            return BadRequest($"Unknown device type for ID '{dev.DeviceTypeId}'");
 
         var device = new Device
         {
@@ -237,9 +237,9 @@ public async Task<IActionResult> UpdateDevice(int id, [FromBody] CreateDeviceDto
             return NotFound($"Device {id} not found");
 
         var type = await _context.DeviceTypes
-            .SingleOrDefaultAsync(t => t.Name == dto.DeviceTypeName);
+            .SingleOrDefaultAsync(t => t.Id == dto.DeviceTypeId);
         if (type == null)
-            return BadRequest($"Unknown device type '{dto.DeviceTypeName}'");
+            return BadRequest($"Unknown device type '{dto.DeviceTypeId}'");
 
         device.Name = dto.Name;
         device.DeviceTypeId = type.Id;

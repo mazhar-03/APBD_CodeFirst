@@ -8,7 +8,7 @@ public class CreateDeviceDto
     [Required]
     public required string Name { get; set; } = null!;
     [Required]
-    public required string DeviceTypeName { get; set; }  = null!;
+    public required int DeviceTypeId { get; set; }
     
     [Required]
     public required bool IsEnabled {get; set;}

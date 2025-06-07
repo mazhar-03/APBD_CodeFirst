@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CF.API.Controllers;
 
-[Route("api/employee")]
+[Route("api/employees")]
 [ApiController]
 public class EmployeeController : ControllerBase
 {
@@ -21,94 +21,165 @@ public class EmployeeController : ControllerBase
     }
     
     [HttpGet("{id}")]
-[Authorize]
-public async Task<IActionResult> GetAccountById(int id)
-{
-    var account = await _context.Accounts
-        .Include(a => a.Employee)
-            .ThenInclude(e => e.Person)
-        .Include(a => a.Employee)
-            .ThenInclude(e => e.Position)
-        .Include(a => a.Role)
-        .FirstOrDefaultAsync(a => a.Id == id);
-
-    if (account == null)
-        return NotFound("Account not found.");
-
-    if (account.Employee == null)
-        return NotFound("Employee data not found.");
-
-    if (account.Employee.Person == null)
-        return NotFound("Employee personal data not found.");
-
-    if (account.Role == null)
-        return NotFound("Role data not found.");
-
-    var currentUsername = User.Identity?.Name;
-    var isAdmin = User.IsInRole("Admin");
-
-    if (!isAdmin && !string.Equals(account.Username, currentUsername, StringComparison.OrdinalIgnoreCase))
-        return Forbid(); 
-
-    var employeeDto = new EmployeeDto
+    [Authorize]
+    public async Task<IActionResult> GetEmployeeById(int id)
     {
-        Id = account.Employee.Id,
-        FullName = $"{account.Employee.Person.FirstName} {account.Employee.Person.MiddleName} {account.Employee.Person.LastName}",
-        Position = new PositionDto
+        var username = User.Identity?.Name;
+        if (string.IsNullOrEmpty(username))
+            return Forbid();
+
+        var account = await _context.Accounts
+            .Include(a => a.Employee)
+            .Include(a => a.Role)
+            .FirstOrDefaultAsync(a => a.Username == username);
+
+        if (account == null || account.Employee == null)
+            return Forbid();
+
+        var isAdmin = account.Role.Name == "Admin";
+        if (!isAdmin && account.Employee.Id != id)
+            return Forbid();
+
+        var employee = await _context.Employees
+            .Include(e => e.Person)
+            .Include(e => e.Position)
+            .FirstOrDefaultAsync(e => e.Id == id);
+
+        if (employee == null)
+            return NotFound($"Employee with ID {id} not found.");
+
+        var dto = new SpecificEmployeeDto()
         {
-            Id = account.Employee.Position?.Id,
-            Name = account.Employee.Position?.Name,
-            MinExpYears = account.Employee.Position?.MinExpYears ?? 0
-        },
-        Person = new PersonDto
-        {
-            Id = account.Employee.Person.Id,
-            FirstName = account.Employee.Person.FirstName,
-            LastName = account.Employee.Person.LastName,
-            Email = account.Employee.Person.Email,
-            PhoneNumber = account.Employee.Person.PhoneNumber,
-            PassportNumber = account.Employee.Person.PassportNumber
-        }
-    };
+            Person = new PersonDto
+            {
+                PassportNumber = employee.Person.PassportNumber,
+                FirstName = employee.Person.FirstName,
+                MiddleName = employee.Person.MiddleName,
+                LastName = employee.Person.LastName,
+                PhoneNumber = employee.Person.PhoneNumber,
+                Email = employee.Person.Email
+            },
+            Salary = employee.Salary,
+            Position = employee.Position.Name,
+            HireDate = employee.HireDate
+        };
 
-    var accountDto = new AccountDto
-    {
-        Id = account.Id,
-        Username = account.Username,
-        RoleName = account.Role.Name,
-        Employee = employeeDto
-    };
+        return Ok(dto);
+    }
 
-    return Ok(accountDto);
-}
-
+    
     [HttpPut("{id}")]
     [Authorize]
-    public async Task<IActionResult> UpdateAccountById(int id, [FromBody] UpdateDto dto)
+    public async Task<IActionResult> UpdateEmployeeById(int id, [FromBody] UpdateEmployeeDto dto)
     {
-        var account = await _context.Accounts.FirstOrDefaultAsync(a => a.Id == id);
-        if (account == null)
-            return NotFound($"Account with ID {id} not found.");
+        var username = User.Identity?.Name;
+        if (string.IsNullOrEmpty(username))
+            return Forbid();
 
-        var currentUsername = User.Identity?.Name;
-        var isAdmin = User.IsInRole("Admin");
+        var account = await _context.Accounts
+            .Include(a => a.Employee)
+            .Include(a => a.Role)
+            .FirstOrDefaultAsync(a => a.Username == username);
 
-        if (!isAdmin && !string.Equals(currentUsername, account.Username, StringComparison.OrdinalIgnoreCase))
-            return Forbid(); 
+        if (account == null || account.Employee == null)
+            return Forbid();
 
-        if (!string.IsNullOrEmpty(dto.Username) && dto.Username != account.Username)
+        var isAdmin = account.Role.Name == "Admin";
+
+        if (!isAdmin && account.Employee.Id != id)
+            return Forbid();
+
+        var employee = await _context.Employees
+            .Include(e => e.Person)
+            .FirstOrDefaultAsync(e => e.Id == id);
+
+        if (employee == null)
+            return NotFound($"Employee with ID {id} not found.");
+
+        if (dto.Person != null)
         {
-            if (await _context.Accounts.AnyAsync(a => a.Username == dto.Username && a.Id != id))
-                return BadRequest("Username already taken.");
-
-            account.Username = dto.Username;
+            employee.Person.PassportNumber = dto.Person.PassportNumber;
+            employee.Person.FirstName = dto.Person.FirstName;
+            employee.Person.MiddleName = dto.Person.MiddleName;
+            employee.Person.LastName = dto.Person.LastName;
+            employee.Person.PhoneNumber = dto.Person.PhoneNumber;
+            employee.Person.Email = dto.Person.Email;
         }
 
-        if (!string.IsNullOrEmpty(dto.Password))
-            account.Password = _passwordHasher.HashPassword(account, dto.Password);
+        employee.Salary = dto.Salary;
+
+        if (isAdmin && dto.PositionId.HasValue)
+        {
+            var position = await _context.Positions.FindAsync(dto.PositionId.Value);
+            if (position == null)
+                return BadRequest($"Position with ID {dto.PositionId.Value} not found.");
+
+            employee.PositionId = dto.PositionId.Value;
+        }
 
         await _context.SaveChangesAsync();
         return NoContent();
     }
 
+
+
+
+    [HttpGet]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> GetAllEmployees()
+    {
+        try
+        {
+            var employees = await _context.Employees
+                .Include(e => e.Person)
+                .Select(e => new AllEmployeesDto
+                {
+                    Id = e.Id,
+                    FullName = $"{e.Person.FirstName} {e.Person.MiddleName} {e.Person.LastName}"
+                })
+                .ToListAsync();
+
+            return Ok(employees);
+        }
+        catch (Exception e)
+        {
+            return BadRequest(e.Message);
+        }
+    }
+
+    
+    
+    [HttpPost]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> CreateEmployee([FromBody] CreateEmployeeDto dto)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var position = await _context.Positions.FindAsync(dto.PositionId);
+        if (position == null)
+            return BadRequest("Position not found.");
+
+        var person = new Person
+        {
+            FirstName = dto.Person.FirstName,
+            MiddleName = dto.Person.MiddleName,
+            LastName = dto.Person.LastName,
+            PassportNumber = dto.Person.PassportNumber,
+            PhoneNumber = dto.Person.PhoneNumber,
+            Email = dto.Person.Email
+        };
+
+        var employee = new Employee
+        {
+            Person = person,
+            Salary = dto.Salary,
+            PositionId = dto.PositionId
+        };
+
+        _context.Employees.Add(employee);
+        await _context.SaveChangesAsync();
+
+        return CreatedAtAction("GetEmployeeById", new { id = employee.Id }, new { employee.Id });
+    }
 }

@@ -8,6 +8,5 @@ public class Role
 
     public string Name { get; set; }
 
-    [JsonIgnore]
-    public ICollection<Account> Accounts { get; set; }
+    [JsonIgnore] public ICollection<Account> Accounts { get; set; }
 }

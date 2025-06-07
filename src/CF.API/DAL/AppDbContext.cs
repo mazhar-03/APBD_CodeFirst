@@ -15,6 +15,7 @@ public class AppDbContext : DbContext
     public DbSet<Device> Devices { get; set; }
     public DbSet<DeviceEmployee> DeviceEmployees { get; set; }
     public DbSet<DeviceType> DeviceTypes { get; set; }
+    public DbSet<Position> Positions { get; set; }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

@@ -1,5 +1,6 @@
 using System.Text;
 using CF.API.DAL;
+using CF.API.Helpers.Middleware;
 using CF.API.Helpers.Options;
 using CF.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -57,5 +58,7 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+app.UseMiddleware<ValidationMiddleware>();
 
 app.Run();

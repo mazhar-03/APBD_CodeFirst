@@ -10,16 +10,19 @@ namespace CF.API.Controllers;
 public class RoleController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly ILogger<RoleController> _logger;
 
-    public RoleController(AppDbContext context)
+    public RoleController(AppDbContext context, ILogger<RoleController> logger)
     {
         _context = context;
+        _logger = logger;
     }
-    
+
     [HttpGet]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetRoles()
     {
+        _logger.LogInformation($"Getting roles.");
         var roles = await _context.Roles
             .Select(r => new
             {

@@ -269,7 +269,7 @@ public class DevicesController : ControllerBase
             return Problem("Error deleting device: " + ex.Message);
         }
     }
-    
+
     [HttpGet("types")]
     [Authorize]
     public async Task<IActionResult> GetDeviceTypes()

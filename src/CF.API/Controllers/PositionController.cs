@@ -7,19 +7,22 @@ namespace CF.API.Controllers;
 
 [ApiController]
 [Route("api/positions")]
-public class PositionController: ControllerBase
+public class PositionController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly ILogger<PositionController> _logger;
 
-    public PositionController(AppDbContext context)
+    public PositionController(AppDbContext context, ILogger<PositionController> logger)
     {
         _context = context;
+        _logger = logger;
     }
-    
+
     [HttpGet("/api/positions")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetPositions()
     {
+        _logger.LogInformation($"Getting positions.");
         var positions = await _context.Positions
             .Select(p => new
             {
@@ -29,5 +32,4 @@ public class PositionController: ControllerBase
 
         return Ok(positions);
     }
-
 }

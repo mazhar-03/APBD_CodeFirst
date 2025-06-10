@@ -14,20 +14,25 @@ public class EmployeeController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly PasswordHasher<Account> _passwordHasher = new();
+    private readonly ILogger<EmployeeController> _logger;
 
-    public EmployeeController(AppDbContext context)
+    public EmployeeController(AppDbContext context, ILogger<EmployeeController> logger)
     {
         _context = context;
+        _logger = logger;
     }
-    
+
     [HttpGet("{id}")]
     [Authorize]
     public async Task<IActionResult> GetEmployeeById(int id)
     {
+        _logger.LogInformation($"Getting employee : {id}");
         var username = User.Identity?.Name;
         if (string.IsNullOrEmpty(username))
+        {
+            _logger.LogWarning($"Username doesn't found : {username}");
             return Forbid();
-
+        }
         var account = await _context.Accounts
             .Include(a => a.Employee)
             .Include(a => a.Role)
@@ -38,7 +43,10 @@ public class EmployeeController : ControllerBase
 
         var isAdmin = account.Role.Name == "Admin";
         if (!isAdmin && account.Employee.Id != id)
+        {
+            _logger.LogWarning($"Employee doesn't have an admin role : {account}");
             return Forbid();
+        }
 
         var employee = await _context.Employees
             .Include(e => e.Person)
@@ -48,7 +56,7 @@ public class EmployeeController : ControllerBase
         if (employee == null)
             return NotFound($"Employee with ID {id} not found.");
 
-        var dto = new SpecificEmployeeDto()
+        var dto = new SpecificEmployeeDto
         {
             Person = new PersonDto
             {
@@ -67,11 +75,12 @@ public class EmployeeController : ControllerBase
         return Ok(dto);
     }
 
-    
+
     [HttpPut("{id}")]
     [Authorize]
     public async Task<IActionResult> UpdateEmployeeById(int id, [FromBody] UpdateEmployeeDto dto)
     {
+        _logger.LogInformation($"Updating employee : {id}");
         var username = User.Identity?.Name;
         if (string.IsNullOrEmpty(username))
             return Forbid();
@@ -87,14 +96,20 @@ public class EmployeeController : ControllerBase
         var isAdmin = account.Role.Name == "Admin";
 
         if (!isAdmin && account.Employee.Id != id)
+        {
+            _logger.LogWarning($"Employee doesn't have an admin role : {account}");
             return Forbid();
+        }
 
         var employee = await _context.Employees
             .Include(e => e.Person)
             .FirstOrDefaultAsync(e => e.Id == id);
 
         if (employee == null)
+        {
+            _logger.LogWarning($"Employee with ID {id} not found.");
             return NotFound($"Employee with ID {id} not found.");
+        }
 
         if (dto.Person != null)
         {
@@ -112,16 +127,18 @@ public class EmployeeController : ControllerBase
         {
             var position = await _context.Positions.FindAsync(dto.PositionId.Value);
             if (position == null)
+            {
+                _logger.LogWarning($"Position with ID {dto.PositionId.Value} not found.");
                 return BadRequest($"Position with ID {dto.PositionId.Value} not found.");
+            }
 
             employee.PositionId = dto.PositionId.Value;
         }
 
         await _context.SaveChangesAsync();
+        _logger.LogInformation($"Updated employee : {id}");
         return NoContent();
     }
-
-
 
 
     [HttpGet]
@@ -130,12 +147,13 @@ public class EmployeeController : ControllerBase
     {
         try
         {
+            _logger.LogInformation("Getting all employees");
             var employees = await _context.Employees
                 .Include(e => e.Person)
                 .Select(e => new AllEmployeesDto
                 {
                     Id = e.Id,
-                    FullName = $"{e.Person.FirstName} {e.Person.MiddleName} {e.Person.LastName}"
+                    FullName = $"{e.Person.FirstName} {e.Person.MiddleName ?? ""} {e.Person.LastName}"
                 })
                 .ToListAsync();
 
@@ -143,22 +161,24 @@ public class EmployeeController : ControllerBase
         }
         catch (Exception e)
         {
+            _logger.LogError(e.Message, "Error getting all employees");
             return BadRequest(e.Message);
         }
     }
 
-    
-    
+
     [HttpPost]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateEmployee([FromBody] CreateEmployeeDto dto)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+        _logger.LogInformation("creating employee");
 
         var position = await _context.Positions.FindAsync(dto.PositionId);
         if (position == null)
+        {
+            _logger.LogWarning($"Position with ID {dto.PositionId} not found.");
             return BadRequest("Position not found.");
+        }
 
         var person = new Person
         {
@@ -179,6 +199,7 @@ public class EmployeeController : ControllerBase
 
         _context.Employees.Add(employee);
         await _context.SaveChangesAsync();
+        _logger.LogInformation($"Employee created with id: {employee.Id}");
 
         return CreatedAtAction("GetEmployeeById", new { id = employee.Id }, new { employee.Id });
     }

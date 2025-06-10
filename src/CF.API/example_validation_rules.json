@@ -1,5 +1,5 @@
 {
-  "validations":[
+  "validations": [
     {
       "type": "PC",
       "preRequestName": "isEnabled",
@@ -18,7 +18,10 @@
       "rules": [
         {
           "paramName": "networkName",
-          "regex": ["CompanyNameWifi1", "CompanyNameWifi2"]
+          "regex": [
+            "CompanyNameWifi1",
+            "CompanyNameWifi2"
+          ]
         },
         {
           "paramName": "ipAddress",

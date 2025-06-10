@@ -1,148 +1,150 @@
 ﻿using System.Text.Json;
 using System.Text.RegularExpressions;
+using CF.API.DAL;
 using Microsoft.EntityFrameworkCore;
 
-namespace CF.API.Helpers.Middleware
+namespace CF.API.Helpers.Middleware;
+
+public class ValidationMiddleware
 {
-    public class ValidationMiddleware
+    private readonly ILogger<ValidationMiddleware> _logger;
+    private readonly RequestDelegate _next;
+
+    //life-saver for the problem that i faced.(can't use dbcontext here)
+    private readonly IServiceProvider _serviceProvider;
+    private readonly string _validationRulesFilePath = "example_validation_rules.json";
+
+    public ValidationMiddleware(
+        RequestDelegate next,
+        ILogger<ValidationMiddleware> logger,
+        IServiceProvider serviceProvider)
     {
-        private readonly RequestDelegate _next;
-        private readonly ILogger<ValidationMiddleware> _logger;
-        private readonly string _validationRulesFilePath = "example_validation_rules.json";
-        
-        //life-saver for the problem that i faced.(can't use dbcontext here)
-        private readonly IServiceProvider _serviceProvider;
+        _next = next;
+        _logger = logger;
+        _serviceProvider = serviceProvider;
+    }
 
-        public ValidationMiddleware(
-            RequestDelegate next,
-            ILogger<ValidationMiddleware> logger,
-            IServiceProvider serviceProvider)
+    public async Task InvokeAsync(HttpContext context)
+    {
+        if (context.Request.Path.StartsWithSegments("/api/devices") &&
+            (context.Request.Method == HttpMethods.Post || context.Request.Method == HttpMethods.Put))
         {
-            _next = next;
-            _logger = logger;
-            _serviceProvider = serviceProvider;
-        }
+            var deviceJson = await GetDeviceJsonFromBody(context);
 
-        public async Task InvokeAsync(HttpContext context)
-        {
-            if (context.Request.Path.StartsWithSegments("/api/devices") &&
-                (context.Request.Method == HttpMethods.Post || context.Request.Method == HttpMethods.Put))
+            if (deviceJson == null)
             {
-                var deviceJson = await GetDeviceJsonFromBody(context);
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                await context.Response.WriteAsync("Invalid device data.");
+                return;
+            }
 
-                if (deviceJson == null)
+            var root = deviceJson.RootElement;
+            if (!root.TryGetProperty("typeId", out var typeIdProp) ||
+                !root.TryGetProperty("isEnabled", out var isEnabledProp) ||
+                !root.TryGetProperty("additionalProperties", out var additionalProps))
+            {
+                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                await context.Response.WriteAsync("Missing required fields (typeId, isEnabled, additionalProperties).");
+                return;
+            }
+
+            var typeId = typeIdProp.GetInt32();
+            var isEnabled = isEnabledProp.GetBoolean();
+            string? deviceTypeName = null;
+
+            // solved the issue that we cant use dbcontext here in that way
+            using (var scope = _serviceProvider.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var type = await db.DeviceTypes.FirstOrDefaultAsync(t => t.Id == typeId);
+                deviceTypeName = type?.Name;
+            }
+
+            // skip the validation for not maching any deviceType
+            if (deviceTypeName == null)
+            {
+                _logger.LogWarning($"Device type not found: {typeId}");
+                await _next(context);
+                return;
+            }
+
+            var rulesJson = await File.ReadAllTextAsync(_validationRulesFilePath);
+            var rulesDoc = JsonDocument.Parse(rulesJson);
+            var validations = rulesDoc.RootElement.GetProperty("validations").EnumerateArray();
+
+            var matchedRule = validations.FirstOrDefault(v =>
+                v.GetProperty("type").GetString() == deviceTypeName &&
+                v.GetProperty("preRequestName").GetString() == "isEnabled" &&
+                v.GetProperty("preRequestValue").GetString().ToLower() == isEnabled.ToString().ToLower()
+            );
+
+            // if there are rules, we apply
+            if (matchedRule.ValueKind != JsonValueKind.Undefined)
+            {
+                foreach (var rule in matchedRule.GetProperty("rules").EnumerateArray())
                 {
-                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                    await context.Response.WriteAsync("Invalid device data.");
-                    return;
-                }
+                    var paramName = rule.GetProperty("paramName").GetString();
 
-                var root = deviceJson.RootElement;
-                if (!root.TryGetProperty("typeId", out var typeIdProp) ||
-                    !root.TryGetProperty("isEnabled", out var isEnabledProp) ||
-                    !root.TryGetProperty("additionalProperties", out var additionalProps))
-                {
-                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                    await context.Response.WriteAsync("Missing required fields (typeId, isEnabled, additionalProperties).");
-                    return;
-                }
-
-                int typeId = typeIdProp.GetInt32();
-                bool isEnabled = isEnabledProp.GetBoolean();
-                string? deviceTypeName = null;
-
-                // solved the issue that we cant use dbcontext here in that way
-                using (var scope = _serviceProvider.CreateScope())
-                {
-                    var db = scope.ServiceProvider.GetRequiredService<DAL.AppDbContext>();
-                    var type = await db.DeviceTypes.FirstOrDefaultAsync(t => t.Id == typeId);
-                    deviceTypeName = type?.Name;
-                }
-
-                // skip the validation for not maching any deviceType
-                if (deviceTypeName == null)
-                {
-                    _logger.LogWarning($"Device type not found: {typeId}");
-                    await _next(context);
-                    return;
-                }
-
-                var rulesJson = await File.ReadAllTextAsync(_validationRulesFilePath);
-                var rulesDoc = JsonDocument.Parse(rulesJson);
-                var validations = rulesDoc.RootElement.GetProperty("validations").EnumerateArray();
-
-                var matchedRule = validations.FirstOrDefault(v =>
-                    v.GetProperty("type").GetString() == deviceTypeName &&
-                    v.GetProperty("preRequestName").GetString() == "isEnabled" &&
-                    v.GetProperty("preRequestValue").GetString().ToLower() == isEnabled.ToString().ToLower()
-                );
-
-                // if there are rules, we apply
-                if (matchedRule.ValueKind != JsonValueKind.Undefined)
-                {
-                    foreach (var rule in matchedRule.GetProperty("rules").EnumerateArray())
+                    if (!additionalProps.TryGetProperty(paramName, out var paramValue))
                     {
-                        var paramName = rule.GetProperty("paramName").GetString();
-                        
-                        if (!additionalProps.TryGetProperty(paramName, out var paramValue))
-                        {
-                            context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                            await context.Response.WriteAsync($"Missing required additional property: {paramName}");
-                            _logger.LogWarning($"Missing property: {paramName}");
-                            return;
-                        }
+                        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                        await context.Response.WriteAsync($"Missing required additional property: {paramName}");
+                        _logger.LogWarning($"Missing property: {paramName}");
+                        return;
+                    }
 
-                        if (rule.TryGetProperty("regex", out var regexProp))
+                    if (rule.TryGetProperty("regex", out var regexProp))
+                    {
+                        if (regexProp.ValueKind == JsonValueKind.Array)
                         {
-                            if (regexProp.ValueKind == JsonValueKind.Array)
+                            var allowed = regexProp.EnumerateArray().Select(x => x.GetString()).ToList();
+                            if (!allowed.Contains(paramValue.GetString()))
                             {
-                                var allowed = regexProp.EnumerateArray().Select(x => x.GetString()).ToList();
-                                if (!allowed.Contains(paramValue.GetString()))
-                                {
-                                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                                    await context.Response.WriteAsync($"Invalid value for {paramName}. Allowed: {string.Join(", ", allowed)}");
-                                    _logger.LogWarning($"Invalid value for {paramName}: {paramValue}");
-                                    return;
-                                }
+                                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                                await context.Response.WriteAsync(
+                                    $"Invalid value for {paramName}. Allowed: {string.Join(", ", allowed)}");
+                                _logger.LogWarning($"Invalid value for {paramName}: {paramValue}");
+                                return;
                             }
-                            else if (regexProp.ValueKind == JsonValueKind.String)
+                        }
+                        else if (regexProp.ValueKind == JsonValueKind.String)
+                        {
+                            var regex = regexProp.GetString();
+                            if (!Regex.IsMatch(paramValue.GetString() ?? "", regex))
                             {
-                                var regex = regexProp.GetString();
-                                if (!Regex.IsMatch(paramValue.GetString() ?? "", regex))
-                                {
-                                    context.Response.StatusCode = StatusCodes.Status400BadRequest;
-                                    await context.Response.WriteAsync($"Invalid value for {paramName} (regex: {regex})");
-                                    _logger.LogWarning($"Regex failed for {paramName}: {regex}");
-                                    return;
-                                }
+                                context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                                await context.Response.WriteAsync($"Invalid value for {paramName} (regex: {regex})");
+                                _logger.LogWarning($"Regex failed for {paramName}: {regex}");
+                                return;
                             }
                         }
                     }
                 }
-                else
-                {
-                    await _next(context);
-                    return;
-                }
             }
-            await _next(context);
+            else
+            {
+                await _next(context);
+                return;
+            }
         }
 
-        private async Task<JsonDocument> GetDeviceJsonFromBody(HttpContext context)
+        await _next(context);
+    }
+
+    private async Task<JsonDocument> GetDeviceJsonFromBody(HttpContext context)
+    {
+        try
         {
-            try
-            {
-                context.Request.EnableBuffering(); 
-                context.Request.Body.Position = 0;
-                var doc = await JsonDocument.ParseAsync(context.Request.Body);
-                context.Request.Body.Position = 0;
-                return doc;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError("Error parsing device JSON: " + ex.Message);
-                return null;
-            }
+            context.Request.EnableBuffering();
+            context.Request.Body.Position = 0;
+            var doc = await JsonDocument.ParseAsync(context.Request.Body);
+            context.Request.Body.Position = 0;
+            return doc;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("Error parsing device JSON: " + ex.Message);
+            return null;
         }
     }
 }

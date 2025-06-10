@@ -1,6 +1,4 @@
-﻿using System.Text.Json;
-
-namespace CF.API.Validation;
+﻿namespace CF.API.Validation;
 
 public class ValidationRule
 {
